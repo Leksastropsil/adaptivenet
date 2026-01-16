@@ -7,7 +7,6 @@ use axum::{
     Router,
 };
 use std::sync::Arc;
-use tokio::net::TcpListener;
 use vercel_runtime::{run, Body, Error, Request, Response};
 use tower::ServiceExt;
 
