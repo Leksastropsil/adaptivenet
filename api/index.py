@@ -1,11 +1,10 @@
-import uvicorn
-import requests
 import json
-from bs4 import BeautifulSoup
-from fastapi import FastAPI, HTTPException, Query
+from typing import List, Optional
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import List, Optional, Dict
+from bs4 import BeautifulSoup
+import httpx
 from mangum import Mangum
 
 # --- KONFIGURASI DOMAIN ---
@@ -13,41 +12,34 @@ LK21_BASE_URL = "https://tv7.lk21official.cc"
 PLAYER_IFRAME_HOST = "playeriframe.sbs"
 CLOUD_HOST = "cloud.hownetwork.xyz"
 
+# --- ENGINE ---
 class LK21Engine:
     def __init__(self):
         self.headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0 Safari/537.36',
         }
 
-    # --- FITUR BARU: EXTRACT FILTERS ---
-    def get_filters_metadata(self):
-        """Mengambil opsi filter (Genre, Negara, Tahun) dari Homepage"""
-        print(f"[*] Fetching Filters from: {LK21_BASE_URL}")
+    # --- FILTERS ---
+    async def get_filters_metadata(self):
         try:
-            resp = requests.get(LK21_BASE_URL, headers=self.headers, timeout=10)
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                resp = await client.get(LK21_BASE_URL, headers=self.headers)
             soup = BeautifulSoup(resp.text, 'html.parser')
-            
-            filters = {
-                "genres": [],
-                "countries": [],
-                "years": [],
-                "orders": []
-            }
 
-            # 1. Parse Genre
+            filters = {"genres": [], "countries": [], "years": [], "orders": []}
+
+            # Genres
             genre_select = soup.select_one('select[name="genre1"]')
             if genre_select:
                 for opt in genre_select.find_all('option'):
                     val = opt.get('value')
                     if val:
-                        # Format value agar siap pakai di endpoint /movies
-                        # Contoh: "action" -> "genre/action"
                         filters["genres"].append({
                             "title": opt.get_text(strip=True),
-                            "parameter": f"genre/{val}" 
+                            "parameter": f"genre/{val}"
                         })
 
-            # 2. Parse Negara
+            # Countries
             country_select = soup.select_one('select[name="country"]')
             if country_select:
                 for opt in country_select.find_all('option'):
@@ -58,111 +50,82 @@ class LK21Engine:
                             "parameter": f"country/{val}"
                         })
 
-            # 3. Parse Tahun
+            # Years
             year_select = soup.select_one('select[name="tahun"]')
             if year_select:
                 for opt in year_select.find_all('option'):
                     val = opt.get('value')
-                    if val and val != "0": # Skip default value
+                    if val and val != "0":
                         filters["years"].append({
                             "title": opt.get_text(strip=True),
                             "parameter": f"year/{val}"
                         })
-            
-            # 4. Parse Order By (Urutan)
+
+            # Orders
             order_select = soup.select_one('select.orderby')
             if order_select:
                 for opt in order_select.find_all('option'):
                     val = opt.get('value')
                     if val:
-                        # Hapus slash depan belakang (misal: /populer/ -> populer)
-                        clean_val = val.strip('/')
                         filters["orders"].append({
                             "title": opt.get_text(strip=True),
-                            "parameter": clean_val
+                            "parameter": val.strip('/')
                         })
 
             return filters
-
         except Exception as e:
-            print(f"[!] Error extracting filters: {e}")
-            return {}
+            print(f"[!] get_filters_metadata error: {e}")
+            return {"genres": [], "countries": [], "years": [], "orders": []}
 
-    def scrape_catalog(self, page: int = 1, category: str = "top-movie-today"):
-        """Mengambil daftar film (Support Filter)"""
-        # category bisa berupa: 'populer', 'genre/action', 'year/2024', 'country/usa'
-        
-        if page > 1:
-            url = f"{LK21_BASE_URL}/{category}/page/{page}"
-        else:
-            url = f"{LK21_BASE_URL}/{category}"
-
-        print(f"[*] Scraping Catalog: {url}")
-        
+    # --- CATALOG ---
+    async def scrape_catalog(self, page: int = 1, category: str = "top-movie-today"):
+        url = f"{LK21_BASE_URL}/{category}/page/{page}" if page > 1 else f"{LK21_BASE_URL}/{category}"
         try:
-            resp = requests.get(url, headers=self.headers, timeout=10)
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                resp = await client.get(url, headers=self.headers)
             if resp.status_code != 200:
                 return []
-                
             soup = BeautifulSoup(resp.text, 'html.parser')
             results = []
 
-            articles = soup.select('.gallery-grid article')
-            
-            for item in articles:
+            for item in soup.select('.gallery-grid article'):
                 try:
                     title_tag = item.select_one('.poster-title')
                     link_tag = item.select_one('a')
-                    
                     if not title_tag or not link_tag:
                         continue
-                        
-                    title = title_tag.get_text(strip=True)
-                    href = link_tag['href']
-                    slug = href.strip('/').split('/')[-1]
-
+                    slug = link_tag['href'].strip('/').split('/')[-1]
                     img_tag = item.select_one('img')
                     poster = img_tag['src'] if img_tag else None
-
                     rating_tag = item.select_one('[itemprop="ratingValue"]')
                     rating = rating_tag.get_text(strip=True) if rating_tag else "N/A"
-
                     quality_tag = item.select_one('.label')
                     quality = quality_tag.get_text(strip=True) if quality_tag else "Unknown"
-                    
-                    duration_tag = item.select_one('.duration')
-                    duration = duration_tag.get_text(strip=True) if duration_tag else "-"
-
                     results.append({
-                        "title": title,
+                        "title": title_tag.get_text(strip=True),
                         "slug": slug,
                         "poster": poster,
                         "rating": rating,
                         "quality": quality,
-                        "duration": duration,
                         "url": f"{LK21_BASE_URL}/{slug}"
                     })
                 except Exception:
                     continue
-            
             return results
-
         except Exception as e:
-            print(f"[!] Error Catalog: {e}")
+            print(f"[!] scrape_catalog error: {e}")
             return []
 
-    def search_movies(self, query: str):
+    # --- SEARCH ---
+    async def search_movies(self, query: str):
         url = f"{LK21_BASE_URL}/search"
         params = {'s': query}
         try:
-            resp = requests.get(url, params=params, headers=self.headers, timeout=10)
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                resp = await client.get(url, params=params, headers=self.headers)
             soup = BeautifulSoup(resp.text, 'html.parser')
             results = []
-            
-            items = soup.select('.search-item article') 
-            if not items:
-                items = soup.select('article.post')
-
+            items = soup.select('.search-item article') or soup.select('article.post')
             for item in items:
                 title_tag = item.select_one('h2 a') or item.select_one('.entry-title a')
                 if title_tag:
@@ -176,26 +139,28 @@ class LK21Engine:
                     })
             return results
         except Exception as e:
+            print(f"[!] search_movies error: {e}")
             return []
 
-    def extract_stream_url(self, slug: str):
+    # --- STREAM ---
+    async def extract_stream_url(self, slug: str):
         page_url = f"{LK21_BASE_URL}/{slug}"
-        print(f"[*] Processing Video: {page_url}")
-
         try:
-            resp = requests.get(page_url, headers=self.headers, timeout=10)
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                resp = await client.get(page_url, headers=self.headers)
             if resp.status_code != 200:
-                raise Exception("Halaman 404")
-            soup = BeautifulSoup(resp.text, 'html.parser')
+                raise Exception("Page not found")
 
+            soup = BeautifulSoup(resp.text, 'html.parser')
             target_iframe_url = None
-            player_links = soup.select('#player-list li a')
-            for link in player_links:
+
+            # Player links
+            for link in soup.select('#player-list li a'):
                 href = link.get('data-url', link.get('href'))
                 if PLAYER_IFRAME_HOST in href and "p2p" in href:
                     target_iframe_url = href
                     break
-            
+
             if not target_iframe_url:
                 iframe = soup.find('iframe', id='main-player')
                 if iframe:
@@ -204,11 +169,11 @@ class LK21Engine:
                         target_iframe_url = src
 
             if not target_iframe_url:
-                raise Exception("Server P2P not found.")
+                raise Exception("Server P2P not found")
 
             hash_id = target_iframe_url.split('/')[-1]
             api_url = f"https://{CLOUD_HOST}/api2.php?id={hash_id}"
-            
+            payload = {'r': f"https://{PLAYER_IFRAME_HOST}/", 'd': CLOUD_HOST}
             api_headers = {
                 'User-Agent': self.headers['User-Agent'],
                 'Referer': f"https://{CLOUD_HOST}/video.php?id={hash_id}",
@@ -217,36 +182,31 @@ class LK21Engine:
                 'X-Requested-With': 'XMLHttpRequest'
             }
 
-            payload = {'r': f"https://{PLAYER_IFRAME_HOST}/", 'd': CLOUD_HOST}
-            api_resp = requests.post(api_url, headers=api_headers, data=payload, timeout=10)
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                api_resp = await client.post(api_url, headers=api_headers, data=payload)
             data = json.loads(api_resp.text)
-            
-            streams = []
+
             sources = []
-            if isinstance(data, list): sources = data
-            elif isinstance(data, dict) and 'sources' in data: sources = data['sources']
-            else: sources = [data]
+            if isinstance(data, list):
+                sources = data
+            elif isinstance(data, dict) and "sources" in data:
+                sources = data['sources']
+            else:
+                sources = [data]
 
-            for item in sources:
-                if 'file' in item:
-                    streams.append({
-                        "label": item.get('label', 'Auto'),
-                        "type": "hls",
-                        "url": item['file']
-                    })
-            
-            if not streams: raise Exception("Stream Empty")
+            streams = [{"label": item.get("label", "Auto"), "type": "hls", "url": item["file"]} 
+                        for item in sources if "file" in item]
 
-            return {
-                "title": soup.title.string.split("|")[0].strip(),
-                "slug": slug,
-                "streams": streams
-            }
+            if not streams:
+                raise Exception("Stream empty")
 
+            return {"title": soup.title.string.split("|")[0].strip(), "slug": slug, "streams": streams}
         except Exception as e:
+            print(f"[!] extract_stream_url error: {e}")
             raise HTTPException(status_code=500, detail=str(e))
 
-# --- API SETUP ---
+
+# --- FASTAPI SETUP ---
 app = FastAPI(title="LK21 API Full + Filters")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 engine = LK21Engine()
@@ -281,33 +241,21 @@ class WatchResponse(BaseModel):
     streams: List[StreamItem]
 
 # --- ENDPOINTS ---
+@app.get("/filters", response_model=FilterResponse)
+async def get_filters():
+    return await engine.get_filters_metadata()
 
-@app.get("/filters", response_model=FilterResponse, tags=["General"])
-def get_filters():
-    """
-    Dapatkan semua opsi filter (Genre, Tahun, Negara) yang tersedia di website.
-    Gunakan nilai 'parameter' dari respon ini untuk endpoint /movies.
-    """
-    return engine.get_filters_metadata()
+@app.get("/movies", response_model=List[MovieResult])
+async def get_movies(category: str = "top-movie-today", page: int = 1):
+    return await engine.scrape_catalog(page, category)
 
-@app.get("/movies", response_model=List[MovieResult], tags=["Catalog"])
-def get_movies(category: str = "top-movie-today", page: int = 1):
-    """
-    Ambil daftar film.
-    Parameter 'category' bisa diisi dengan nilai dari endpoint /filters.
-    Contoh: 'genre/action', 'year/2024', 'populer'.
-    """
-    return engine.scrape_catalog(page, category)
+@app.get("/search", response_model=List[MovieResult])
+async def search(q: str):
+    return await engine.search_movies(q)
 
-@app.get("/search", response_model=List[MovieResult], tags=["Search"])
-def search(q: str):
-    return engine.search_movies(q)
+@app.get("/watch/{slug}", response_model=WatchResponse)
+async def watch(slug: str):
+    return await engine.extract_stream_url(slug)
 
-@app.get("/watch/{slug}", response_model=WatchResponse, tags=["Stream"])
-def watch(slug: str):
-    return engine.extract_stream_url(slug)
-
+# --- VERCEL HANDLER ---
 handler = Mangum(app)
-
-if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8000)
