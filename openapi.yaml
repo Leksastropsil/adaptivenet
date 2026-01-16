@@ -1,0 +1,228 @@
+openapi: 3.0.3
+info:
+  title: LK21 API Full + Filters (Unofficial)
+  description: |
+    API hasil reverse engineering untuk melakukan scraping katalog film, pencarian, ekstraksi link streaming (HLS/m3u8), dan pengambilan metadata filter dinamis dari situs LK21.
+    
+    **Fitur Baru v1.1:**
+    * Endpoint `/filters` untuk populate dropdown menu.
+  version: 1.1.0
+servers:
+  - url: http://localhost:8000
+    description: Local Development Server
+
+paths:
+  /filters:
+    get:
+      tags:
+        - General
+      summary: Get Dynamic Filters
+      description: |
+        Mengambil daftar opsi filter (Genre, Negara, Tahun, Sorting) langsung dari halaman web LK21.
+        Gunakan nilai `parameter` dari respon ini untuk request ke endpoint `/movies`.
+      responses:
+        '200':
+          description: Berhasil mengambil data filter.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FilterResponse'
+
+  /movies:
+    get:
+      tags:
+        - Catalog
+      summary: Get Movies Catalog
+      description: Mengambil daftar metadata film dari halaman kategori (Unggulan, Populer, Terbaru, dll).
+      parameters:
+        - name: category
+          in: query
+          description: "Slug kategori/filter. Gunakan nilai dari endpoint `/filters`. Default: 'top-movie-today'."
+          required: false
+          schema:
+            type: string
+            default: top-movie-today
+        - name: page
+          in: query
+          description: Nomor halaman untuk pagination.
+          required: false
+          schema:
+            type: integer
+            default: 1
+      responses:
+        '200':
+          description: Berhasil mengambil daftar film.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/MovieResult'
+
+  /search:
+    get:
+      tags:
+        - Search
+      summary: Search Movies
+      description: Mencari film berdasarkan kata kunci judul.
+      parameters:
+        - name: q
+          in: query
+          description: Kata kunci pencarian (misal: 'Avengers').
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Hasil pencarian ditemukan.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/MovieResult'
+
+  /watch/{slug}:
+    get:
+      tags:
+        - Stream
+      summary: Get Stream URL (The Heist)
+      description: |
+        Melakukan scraping mendalam untuk mendapatkan link video asli (.m3u8).
+        Proses ini melewati proteksi iframe P2P dan memalsukan request API backend.
+      parameters:
+        - name: slug
+          in: path
+          description: Slug unik film (didapat dari endpoint /movies atau /search). Contoh: 'tale-silyan-2025'.
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Link streaming berhasil diekstrak.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WatchResponse'
+        '500':
+          description: Gagal melakukan bypass (Server down atau proteksi berubah).
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  detail:
+                    type: string
+
+components:
+  schemas:
+    FilterOption:
+      type: object
+      properties:
+        title:
+          type: string
+          description: Label untuk ditampilkan di UI (misal: 'Action', '2024').
+          example: "Action"
+        parameter:
+          type: string
+          description: Nilai untuk dikirim ke endpoint `/movies` (misal: 'genre/action').
+          example: "genre/action"
+      required:
+        - title
+        - parameter
+
+    FilterResponse:
+      type: object
+      properties:
+        genres:
+          type: array
+          items:
+            $ref: '#/components/schemas/FilterOption'
+        countries:
+          type: array
+          items:
+            $ref: '#/components/schemas/FilterOption'
+        years:
+          type: array
+          items:
+            $ref: '#/components/schemas/FilterOption'
+        orders:
+          type: array
+          items:
+            $ref: '#/components/schemas/FilterOption'
+          description: Opsi pengurutan (Populer, Rating, Tahun, dll).
+
+    MovieResult:
+      type: object
+      properties:
+        title:
+          type: string
+          example: "Avatar: Fire and Ash"
+        slug:
+          type: string
+          example: "avatar-fire-ash-2025"
+        poster:
+          type: string
+          nullable: true
+          example: "https://poster.lk21.party/.../film.jpg"
+        rating:
+          type: string
+          nullable: true
+          example: "7.1"
+        quality:
+          type: string
+          nullable: true
+          example: "CAM"
+        year:
+          type: string
+          nullable: true
+          example: "2025"
+        duration:
+          type: string
+          nullable: true
+          example: "03:17"
+        url:
+          type: string
+          example: "https://tv7.lk21official.cc/avatar-fire-ash-2025"
+      required:
+        - title
+        - slug
+        - url
+
+    StreamItem:
+      type: object
+      properties:
+        label:
+          type: string
+          description: Label kualitas atau sumber (misal: 'Auto', '720p').
+          example: "Auto"
+        type:
+          type: string
+          description: Tipe stream (biasanya 'hls').
+          example: "hls"
+        url:
+          type: string
+          description: URL Stream (.m3u8) yang siap diputar.
+          example: "https://cloud.hownetwork.xyz/zzz/HASH/index.m3u8"
+      required:
+        - label
+        - type
+        - url
+
+    WatchResponse:
+      type: object
+      properties:
+        title:
+          type: string
+          example: "The Tale of Silyan"
+        slug:
+          type: string
+          example: "tale-silyan-2025"
+        streams:
+          type: array
+          items:
+            $ref: '#/components/schemas/StreamItem'
+      required:
+        - title
+        - slug
+        - streams
