@@ -5,7 +5,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from bs4 import BeautifulSoup
 import httpx
-from mangum import Mangum
 
 # --- KONFIGURASI DOMAIN ---
 LK21_BASE_URL = "https://tv7.lk21official.cc"
@@ -256,6 +255,3 @@ async def search(q: str):
 @app.get("/watch/{slug}", response_model=WatchResponse)
 async def watch(slug: str):
     return await engine.extract_stream_url(slug)
-
-# --- VERCEL HANDLER ---
-handler = Mangum(app)
