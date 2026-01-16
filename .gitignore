@@ -1,0 +1,9 @@
+# Rust
+/target
+Cargo.lock
+**/*.rs.bk
+
+# Python (Legacy)
+__pycache__/
+*.py[cod]
+*$py.class

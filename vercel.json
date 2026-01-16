@@ -1,15 +1,14 @@
 {
-  "version": 2,
-  "builds": [
-    {
-      "src": "api/lk21_handler.py",
-      "use": "@vercel/python"
-    }
-  ],
-  "routes": [
-    {
-      "src": "/(.*)",
-      "dest": "api/lk21_handler.py"
-    }
-  ]
+    "builds": [
+        {
+            "src": "src/main.rs",
+            "use": "@vercel/rust"
+        }
+    ],
+    "routes": [
+        {
+            "src": "/(.*)",
+            "dest": "src/main.rs"
+        }
+    ]
 }
