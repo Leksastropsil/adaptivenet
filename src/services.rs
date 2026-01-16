@@ -91,7 +91,7 @@ impl LK21Engine {
                  None => continue,
              };
              
-             let (href, slug) = match element.select(&link_sel).next() {
+             let (_href, slug) = match element.select(&link_sel).next() {
                  Some(el) => {
                      let h = el.value().attr("href").unwrap_or("").to_string();
                      let s = h.trim_matches('/').split('/').last().unwrap_or("").to_string();
@@ -114,7 +114,7 @@ impl LK21Engine {
              
              results.push(MovieResult {
                  title,
-                 slug,
+                 slug: slug.clone(),
                  poster,
                  rating,
                  quality,
@@ -174,39 +174,52 @@ impl LK21Engine {
             anyhow::bail!("Page not found");
         }
         let text = resp.text().await?;
-        let document = Html::parse_document(&text);
 
-        // Title
-        let title_sel = Selector::parse("title").unwrap();
-        let title_full = document.select(&title_sel).next().map(|t| t.text().collect::<Vec<_>>().join("")).unwrap_or_default();
-        let title = title_full.split('|').next().unwrap_or("").trim().to_string();
+        
+        let hash_id = {
+            let document = Html::parse_document(&text);
 
-        let mut target_iframe_url = None;
+            // Title
+            let title_sel = Selector::parse("title").unwrap();
+            let _title_full = document.select(&title_sel).next().map(|t| t.text().collect::<Vec<_>>().join("")).unwrap_or_default();
+            // We can re-parse title later or just ignore since we return it in WatchResponse?
+            // Actually WatchResponse requires title.
+            // We need to return title AND hash_id from this block.
+            
+            // Re-extract title
+            let title = document.select(&title_sel).next().map(|t| t.text().collect::<Vec<_>>().join("")).unwrap_or_default()
+                .split('|').next().unwrap_or("").trim().to_string();
 
-        // Check player list
-        let player_list_sel = Selector::parse("#player-list li a").unwrap();
-        for element in document.select(&player_list_sel) {
-            let href = element.value().attr("data-url").or_else(|| element.value().attr("href")).unwrap_or("");
-            if href.contains(PLAYER_IFRAME_HOST) && href.contains("p2p") {
-                target_iframe_url = Some(href.to_string());
-                break;
+            let mut target_iframe_url = None;
+
+            // Check player list
+            let player_list_sel = Selector::parse("#player-list li a").unwrap();
+            for element in document.select(&player_list_sel) {
+                let href = element.value().attr("data-url").or_else(|| element.value().attr("href")).unwrap_or("");
+                if href.contains(PLAYER_IFRAME_HOST) && href.contains("p2p") {
+                    target_iframe_url = Some(href.to_string());
+                    break;
+                }
             }
-        }
 
-        // Fallback main player
-        if target_iframe_url.is_none() {
-            let iframe_sel = Selector::parse("iframe#main-player").unwrap();
-             if let Some(iframe) = document.select(&iframe_sel).next() {
-                 if let Some(src) = iframe.value().attr("src") {
-                     if src.contains(PLAYER_IFRAME_HOST) {
-                         target_iframe_url = Some(src.to_string());
+            // Fallback main player
+            if target_iframe_url.is_none() {
+                let iframe_sel = Selector::parse("iframe#main-player").unwrap();
+                 if let Some(iframe) = document.select(&iframe_sel).next() {
+                     if let Some(src) = iframe.value().attr("src") {
+                         if src.contains(PLAYER_IFRAME_HOST) {
+                             target_iframe_url = Some(src.to_string());
+                         }
                      }
                  }
-             }
-        }
-
-        let target_url = target_iframe_url.context("Server P2P not found")?;
-        let hash_id = target_url.split('/').last().unwrap_or("").to_string();
+            }
+            
+            let target = target_iframe_url.context("Server P2P not found")?;
+            let hash = target.split('/').last().unwrap_or("").to_string();
+            (title, hash)
+        };
+        
+        let (title, hash_id) = hash_id;
 
         // Call API backend
         let api_url = format!("https://{}/api2.php?id={}", CLOUD_HOST, hash_id);

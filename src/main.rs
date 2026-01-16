@@ -38,7 +38,8 @@ async fn handler(req: Request) -> Result<Response<Body>, Error> {
     // We just need to ensure the request is passed to axum's oneshot.
     
     let response = app.oneshot(req).await.map_err(|e| Error::from(e.to_string()))?;
-    
-    // Convert axum response to vercel response (both are http::Response)
+    let (parts, body) = response.into_parts();
+    let bytes = axum::body::to_bytes(body, usize::MAX).await.map_err(|e| Error::from(e.to_string()))?;
+    let response = Response::from_parts(parts, Body::Binary(bytes.to_vec()));
     Ok(response)
 }
