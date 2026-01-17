@@ -1,11 +1,8 @@
 import { handleRequest } from "../src/router";
 
-export default async function handler(request: Request) {
-  // Option handling could be shared, but simplest is to just call handleRequest which handles headers
-  // Actually router handles method check? No, src/index.ts handled OPTIONS.
-  // We should duplicate OPTIONS handling or move it to router.
-  // For now, I'll add simple OPTIONS handling here too to be safe.
-  if (request.method === "OPTIONS") {
+// Export default handler compatible with Vercel Web API
+export default async (req: Request) => {
+  if (req.method === "OPTIONS") {
     return new Response(null, {
       headers: {
         "Access-Control-Allow-Origin": "*",
@@ -14,5 +11,5 @@ export default async function handler(request: Request) {
       },
     });
   }
-  return handleRequest(request);
-}
+  return handleRequest(req);
+};
