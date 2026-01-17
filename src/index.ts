@@ -1,7 +1,7 @@
 import { handleRequest } from "./router";
 
 export default {
-  async fetch(request: Request): Promise<Response> {
+  async fetch(request: Request, env: any, ctx: any): Promise<Response> {
     if (request.method === "OPTIONS") {
       return new Response(null, {
         headers: {
@@ -11,6 +11,6 @@ export default {
         },
       });
     }
-    return handleRequest(request);
+    return handleRequest(request, env);
   },
 };

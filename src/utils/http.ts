@@ -1,6 +1,6 @@
 import fetchCookie from "fetch-cookie";
 import { CookieJar } from "tough-cookie";
-import { LK21Constants } from "../models/types";
+// import { LK21Constants } from "../models/types";
 
 // 1. Cookie Jar Storage (Global for serverless instance lifetime)
 // Note: In strict serverless (Edge), this resets per invocation unless warm.
@@ -58,6 +58,7 @@ async function fetchWithRetry(
 export async function fetchHtml(
   url: string,
   params?: Record<string, string>,
+  customHeaders?: Record<string, string>,
 ): Promise<string> {
   const fetchUrl = params ? `${url}?${new URLSearchParams(params)}` : url;
 
@@ -69,7 +70,7 @@ export async function fetchHtml(
     method: "GET",
     headers: {
       ...BROWSER_HEADERS,
-      Referer: LK21Constants.BASE_URL,
+      ...customHeaders, // Merge custom headers (e.g. Referer)
     },
     // Removed 'proxy' and 'tls' as they are Bun-specific and not supported by standard fetch
   };

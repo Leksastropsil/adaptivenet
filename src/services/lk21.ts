@@ -4,12 +4,16 @@ import {
   MovieResult,
   WatchResponse,
   StreamItem,
-  LK21Constants,
+  LK21Config, // Updated import
 } from "../models/types";
 import { fetchHtml, postForm } from "../utils/http";
 
-export async function getFilters(): Promise<FilterResponse> {
-  const html = await fetchHtml(LK21Constants.BASE_URL);
+export async function getFilters(config: LK21Config): Promise<FilterResponse> {
+  const html = await fetchHtml(
+    config.BASE_URL,
+    {},
+    { Referer: config.BASE_URL },
+  );
   const $ = cheerio.load(html);
 
   const extract = (
@@ -41,13 +45,14 @@ export async function getFilters(): Promise<FilterResponse> {
 }
 
 export async function scrapeCatalog(
+  config: LK21Config,
   page: number = 1,
   category: string = "top-movie-today",
 ): Promise<MovieResult[]> {
   const url =
     page > 1
-      ? `${LK21Constants.BASE_URL}/${category}/page/${page}`
-      : `${LK21Constants.BASE_URL}/${category}`;
+      ? `${config.BASE_URL}/${category}/page/${page}`
+      : `${config.BASE_URL}/${category}`;
 
   // Fail safe for empty pages (Rust/Python do this implicity or explicitly)
   try {
@@ -75,9 +80,7 @@ export async function scrapeCatalog(
         poster,
         rating,
         quality,
-        url: href.startsWith("http")
-          ? href
-          : `${LK21Constants.BASE_URL}/${href}`,
+        url: href.startsWith("http") ? href : `${config.BASE_URL}/${href}`,
       });
     });
 
@@ -87,10 +90,17 @@ export async function scrapeCatalog(
   }
 }
 
-export async function searchMovies(query: string): Promise<MovieResult[]> {
-  const url = `${LK21Constants.BASE_URL}/search`;
+export async function searchMovies(
+  config: LK21Config,
+  query: string,
+): Promise<MovieResult[]> {
+  const url = `${config.BASE_URL}/search`;
   try {
-    const html = await fetchHtml(url, { s: query });
+    const html = await fetchHtml(
+      url,
+      { s: query },
+      { Referer: config.BASE_URL },
+    );
     const $ = cheerio.load(html);
     const results: MovieResult[] = [];
 
@@ -129,9 +139,12 @@ export async function searchMovies(query: string): Promise<MovieResult[]> {
   }
 }
 
-export async function extractStream(slug: string): Promise<WatchResponse> {
-  const pageUrl = `${LK21Constants.BASE_URL}/${slug}`;
-  const html = await fetchHtml(pageUrl);
+export async function extractStream(
+  config: LK21Config,
+  slug: string,
+): Promise<WatchResponse> {
+  const pageUrl = `${config.BASE_URL}/${slug}`;
+  const html = await fetchHtml(pageUrl, {}, { Referer: config.BASE_URL });
   const $ = cheerio.load(html);
 
   const title = $("title").text().split("|")[0].trim();
@@ -143,7 +156,7 @@ export async function extractStream(slug: string): Promise<WatchResponse> {
     const href = $(el).attr("data-url") || $(el).attr("href");
     if (
       href &&
-      href.includes(LK21Constants.PLAYER_IFRAME_HOST) &&
+      href.includes(config.PLAYER_IFRAME_HOST) &&
       href.includes("p2p")
     ) {
       targetIframeUrl = href;
@@ -154,7 +167,7 @@ export async function extractStream(slug: string): Promise<WatchResponse> {
   // Priority 2: Main player iframe
   if (!targetIframeUrl) {
     const src = $("iframe#main-player").attr("src");
-    if (src && src.includes(LK21Constants.PLAYER_IFRAME_HOST)) {
+    if (src && src.includes(config.PLAYER_IFRAME_HOST)) {
       targetIframeUrl = src;
     }
   }
@@ -169,16 +182,16 @@ export async function extractStream(slug: string): Promise<WatchResponse> {
   if (!hash) throw new Error("Could not extract hash ID");
 
   // Post to API
-  const apiUrl = `https://${LK21Constants.CLOUD_HOST}/api2.php?id=${hash}`;
+  const apiUrl = `https://${config.CLOUD_HOST}/api2.php?id=${hash}`;
   const headers = {
-    Referer: `https://${LK21Constants.CLOUD_HOST}/video.php?id=${hash}`,
-    Origin: `https://${LK21Constants.CLOUD_HOST}`,
+    Referer: `https://${config.CLOUD_HOST}/video.php?id=${hash}`,
+    Origin: `https://${config.CLOUD_HOST}`,
     "X-Requested-With": "XMLHttpRequest",
     "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
   };
   const body = {
-    r: `https://${LK21Constants.PLAYER_IFRAME_HOST}/`,
-    d: LK21Constants.CLOUD_HOST,
+    r: `https://${config.PLAYER_IFRAME_HOST}/`,
+    d: config.CLOUD_HOST,
   };
 
   const data = await postForm(apiUrl, body, headers);

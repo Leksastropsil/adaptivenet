@@ -31,9 +31,9 @@ export interface WatchResponse {
   streams: StreamItem[];
 }
 
-export enum LK21Constants {
-  BASE_URL = "https://tv7.lk21official.cc",
-  PLAYER_IFRAME_HOST = "playeriframe.sbs",
-  CLOUD_HOST = "cloud.hownetwork.xyz",
-  USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0 Safari/537.36",
+export interface LK21Config {
+  BASE_URL: string;
+  PLAYER_IFRAME_HOST: string;
+  CLOUD_HOST: string;
+  USER_AGENT: string;
 }

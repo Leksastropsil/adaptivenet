@@ -10,7 +10,10 @@
         "skipLibCheck": true,
         "forceConsistentCasingInFileNames": true,
         "moduleResolution": "Bundler",
-        "outDir": "dist"
+        "outDir": "dist",
+        "types": [
+            "@cloudflare/workers-types"
+        ]
     },
     "include": [
         "src/**/*",

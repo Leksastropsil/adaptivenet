@@ -35,4 +35,16 @@ bun.lockb
 .idea/
 .vscode/
 *.swp
-*.swo
+# Binaries & Executables
+*.exe
+*.dll
+*.so
+*.dylib
+cloudflared
+lk21-client.exe
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+bun.lockb
