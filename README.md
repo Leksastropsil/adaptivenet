@@ -114,6 +114,38 @@ async function loadNext() {
 }
 ```
 
+### Contoh (Flutter/Dart)
+
+```dart
+// Controller
+int page = 1;
+List<Movie> movies = [];
+bool hasMore = true;
+bool isLoading = false;
+
+Future<void> loadNext() async {
+  if (!hasMore || isLoading) return;
+
+  setState(() => isLoading = true);
+
+  final res = await http.get(Uri.parse('$baseUrl/movies?page=$page'));
+  if (res.statusCode == 200) {
+    final List newItems = jsonDecode(res.body);
+
+    if (newItems.isEmpty) {
+      hasMore = false;
+    } else {
+      movies.addAll(newItems.map((e) => Movie.fromJson(e)));
+      page++;
+    }
+  }
+
+  setState(() => isLoading = false);
+}
+
+// UI: Gunakan NotificationListener<ScrollNotification> pada ListView
+```
+
 ## 📂 Struktur Project
 
 ```
