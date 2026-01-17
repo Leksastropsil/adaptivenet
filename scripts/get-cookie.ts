@@ -60,7 +60,9 @@ async function run() {
 
   // 1. AMBIL COOKIE
   const cookies = await page.cookies();
-  const cookieString = cookies.map((c) => `${c.name}=${c.value}`).join("; ");
+  const cookieString = cookies
+    .map((c: { name: string; value: string }) => `${c.name}=${c.value}`)
+    .join("; ");
   console.log(`[Info] Got cookies length: ${cookieString.length}`);
 
   // 2. AMBIL USER AGENT (WAJIB ADA!)

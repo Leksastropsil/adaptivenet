@@ -1,11 +1,11 @@
 name = "lk21-api"
-account_id = "account_id" // lihat pada dashboard cloudflare
+account_id = "a2509855562201ee09fc3cdd4bc05ca8"
 compatibility_date = "2024-04-01"
 compatibility_flags = [ "nodejs_compat" ]
 
 [[kv_namespaces]]
 binding = "LK21_STORE"
-id = "kv_id" // lihat pada dashboard cloudflare
+id = "67bf230e94b145c3804c2d36e98b1ef1"
 
 [vars]
 BASE_URL = "https://tv7.lk21official.cc"
