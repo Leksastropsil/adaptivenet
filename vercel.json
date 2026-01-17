@@ -1,14 +1,8 @@
 {
-    "builds": [
+    "rewrites": [
         {
-            "src": "src/main.rs",
-            "use": "@vercel/rust"
-        }
-    ],
-    "routes": [
-        {
-            "src": "/(.*)",
-            "dest": "src/main.rs"
+            "source": "/(.*)",
+            "destination": "/api/index"
         }
     ]
 }

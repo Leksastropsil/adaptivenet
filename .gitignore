@@ -1,9 +1,38 @@
-# Rust
-/target
-Cargo.lock
+# General
+node_modules/
+dist/
+out/
+coverage/
+.env
+.env.*.local
+.DS_Store
+Thumbs.db
+*.log
+
+# Rust (Recursive - covers root and legacy/rust)
+target/
 **/*.rs.bk
 
-# Python (Legacy)
+# Python (Recursive - covers legacy/python)
 __pycache__/
 *.py[cod]
 *$py.class
+*.so
+.venv
+venv/
+ENV/
+env/
+.pytest_cache/
+
+# Bun
+.bun/
+bun.lockb
+
+# Vercel
+.vercel/
+
+# IDEs
+.idea/
+.vscode/
+*.swp
+*.swo
