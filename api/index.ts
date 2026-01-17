@@ -1,7 +1,7 @@
 import { handleRequest } from "../src/router";
 
 export const config = {
-  runtime: "edge",
+  runtime: "nodejs", // Use Node.js runtime instead of Edge for better library compatibility
 };
 
 export default async function handler(request: Request) {

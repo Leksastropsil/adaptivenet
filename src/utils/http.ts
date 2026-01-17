@@ -1,13 +1,12 @@
-import { fetch as bunFetch } from "bun";
 import fetchCookie from "fetch-cookie";
 import { CookieJar } from "tough-cookie";
 import { LK21Constants } from "../models/types";
 
 // 1. Cookie Jar Storage (Global for serverless instance lifetime)
 // Note: In strict serverless (Edge), this resets per invocation unless warm.
-// fetch-cookie wraps the native fetch
+// fetch-cookie wraps the native global fetch (Node 18+)
 const jar = new CookieJar();
-const fetchWithCookies = fetchCookie(bunFetch, jar);
+const fetchWithCookies = fetchCookie(globalThis.fetch, jar);
 
 // 2. Browser Headers
 const BROWSER_HEADERS = {
@@ -65,15 +64,22 @@ export async function fetchHtml(
   // Check for proxy env
   const proxy = process.env.PROXY_URL;
 
-  const res = await fetchWithRetry(fetchUrl, {
+  // Prepare options
+  const fetchOptions: any = {
     method: "GET",
     headers: {
       ...BROWSER_HEADERS,
       Referer: LK21Constants.BASE_URL,
     },
-    proxy: proxy, // Bun supports proxy natively
-    // TLS spoofing: cipher suite (Bun specific if available in future, currently relies on native impl)
-  });
+    // Removed 'proxy' and 'tls' as they are Bun-specific and not supported by standard fetch
+  };
+
+  // If using a proxy in Node, we would typically need 'https-proxy-agent',
+  // but standard fetch doesn't support 'proxy' option directly like Bun.
+  // We will ignore proxy for now to be runtime agnostic, or user needs to use global agent.
+  // For Vercel/Node, standard fetch is usually sufficient.
+
+  const res = await fetchWithRetry(fetchUrl, fetchOptions);
 
   if (!res.ok) throw new Error(`Fetch failed: ${res.status}`);
   return res.text();
@@ -89,8 +95,6 @@ export async function postForm(
     formData.append(key, data[key]);
   }
 
-  const proxy = process.env.PROXY_URL;
-
   const res = await fetchWithRetry(url, {
     method: "POST",
     headers: {
@@ -102,7 +106,6 @@ export async function postForm(
       "Sec-Fetch-Site": "same-origin", // or cross-site depending on flow
     },
     body: formData,
-    proxy: proxy,
   });
 
   if (!res.ok) throw new Error(`Post failed: ${res.status}`);
