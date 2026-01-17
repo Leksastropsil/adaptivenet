@@ -63,28 +63,28 @@ API ini menggunakan **Split Architecture** dengan mekanisme _self-healing_ otoma
 
 ```mermaid
 graph TD
-    User[🌍 Public User]
+    User[Public User]
 
-    subgraph Cloudflare Edge
-        Worker[⚡ Cloudflare Worker (API Gateway)]
-        KV[(🗄️ KV Store)]
+    subgraph Cloudflare_Edge[Cloudflare Edge]
+        Worker[Cloudflare Worker - API Gateway]
+        KV[(KV Store)]
     end
 
-    subgraph Residential Network
-        Client[💻 Client Magic (Laptop / Home Server)]
-        Browser[🦁 Headless Browser]
+    subgraph Residential_Network[Residential Network]
+        Client[Client Magic - Laptop / Home Server]
+        Browser[Headless Browser]
     end
 
-    Target[🎬 LK21 Server]
+    Target[LK21 Server]
 
     %% Registration Flow
-    Client -.->|"1. Auto-Register Tunnel URL\n(On Startup)"| Worker
+    Client -.->|"1. Auto-Register Tunnel URL<br/>(On Startup)"| Worker
     Worker -.->|"2. Save Tunnel URL"| KV
 
     %% Request Flow
     User ==>|"3. GET /movies"| Worker
     Worker ==>|"4. Get Active Tunnel"| KV
-    Worker ==>|"5. Forward Request\n(Via Secure Tunnel)"| Client
+    Worker ==>|"5. Forward Request<br/>(Via Secure Tunnel)"| Client
     Client ==>|"6. Controls"| Browser
     Browser ==>|"7. Scrapes Content"| Target
 
