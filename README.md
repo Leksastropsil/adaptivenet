@@ -41,7 +41,7 @@ vercel deploy
 
 ## 📖 Dokumentasi API
 
-Base URL (Local): `http://localhost:3000`
+Base URL (Local): `http://localhost:3000`<br/>
 Host URL (Vercel): `https://lk-21-scrapper.vercel.app/`
 
 ### 1. Catalog & Discovery
