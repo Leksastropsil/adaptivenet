@@ -4,8 +4,8 @@
 
 > ⚠️ **Disclaimer**: Proyek ini dibuat **HANYA** untuk tujuan edukasi & riset teknis. Segala bentuk penyalahgunaan adalah tanggung jawab pengguna.
 
-> **Unofficial LK21 / Dunia21 API** yang dibangun langsung di edge.
-> Menggunakan arsitektur **Distributed Edge-to-Residential Proxy Network** untuk bertahan dari sistem anti-bot modern.
+**Unofficial LK21 / Dunia21 API** yang dibangun langsung di edge.
+Menggunakan arsitektur **Distributed Edge-to-Residential Proxy Network** untuk bertahan dari sistem anti-bot modern.
 
 ![Badge](https://img.shields.io/badge/Status-Active-success)
 ![Badge](https://img.shields.io/badge/Stack-Hono%20%7C%20Bun%20%7C%20Puppeteer-orange)
