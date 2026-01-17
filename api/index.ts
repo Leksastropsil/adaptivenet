@@ -1,5 +1,6 @@
+/// <reference types="@cloudflare/workers-types" />
 import { Hono } from "hono";
-import { handle } from "hono/vercel";
+import { cors } from "hono/cors";
 import fetchCookie from "fetch-cookie";
 import { CookieJar } from "tough-cookie";
 import * as cheerio from "cheerio";
@@ -8,12 +9,19 @@ import * as cheerio from "cheerio";
 // TYPES & CONSTANTS
 // -----------------------------------------------------------------------------
 
-enum LK21Constants {
-  BASE_URL = "https://tv7.lk21official.cc",
-  PLAYER_IFRAME_HOST = "playeriframe.sbs",
-  CLOUD_HOST = "cloud.hownetwork.xyz",
-  USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0 Safari/537.36",
-}
+// -----------------------------------------------------------------------------
+// TYPES & CONSTANTS
+// -----------------------------------------------------------------------------
+
+type Bindings = {
+  LK21_STORE: KVNamespace;
+  ADMIN_SECRET: string;
+  USER_AGENT: string;
+  // Config Vars
+  BASE_URL: string;
+  PLAYER_IFRAME_HOST: string;
+  CLOUD_HOST: string;
+};
 
 interface FilterOption {
   title: string;
@@ -49,322 +57,322 @@ interface WatchResponse {
 }
 
 // -----------------------------------------------------------------------------
-// HTTP CLIENT (Stealth / Runtime Agnostic)
+// ENGINE (Stateless per request)
 // -----------------------------------------------------------------------------
 
-// 1. Cookie Jar Storage (Global for serverless instance lifetime)
-const jar = new CookieJar();
-const fetchWithCookies = fetchCookie(globalThis.fetch, jar);
+class LK21Engine {
+  private fetchFn: Function;
+  private tunnelUrl: string;
+  private config: Bindings;
 
-// 2. Browser Headers
-const BROWSER_HEADERS = {
-  "User-Agent":
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
-  Accept:
-    "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
-  "Accept-Language": "en-US,en;q=0.9,id;q=0.8",
-  "Sec-Ch-Ua":
-    '"Not A(Brand";v="99", "Google Chrome";v="121", "Chromium";v="121"',
-  "Sec-Ch-Ua-Mobile": "?0",
-  "Sec-Ch-Ua-Platform": '"Windows"',
-  "Sec-Fetch-Dest": "document",
-  "Sec-Fetch-Mode": "navigate",
-  "Sec-Fetch-Site": "none",
-  "Sec-Fetch-User": "?1",
-  "Upgrade-Insecure-Requests": "1",
-};
-
-// 3. Retry Logic Helper
-async function fetchWithRetry(
-  url: string,
-  options: any,
-  retries = 3,
-): Promise<Response> {
-  let lastError;
-  for (let i = 0; i < retries; i++) {
-    try {
-      const res = await fetchWithCookies(url, options);
-      if (res.status === 403 || res.status === 503) {
-        console.warn(
-          `[Stealth] Blocked ${res.status} on ${url}. Retrying ${i + 1}/${retries}...`,
-        );
-        // Random delay 1-2s
-        await new Promise((r) => setTimeout(r, 1000 + Math.random() * 1000));
-        continue;
-      }
-      return res;
-    } catch (e) {
-      lastError = e;
-      await new Promise((r) => setTimeout(r, 1000));
-    }
-  }
-  throw (
-    lastError || new Error(`Failed to fetch ${url} after ${retries} retries`)
-  );
-}
-
-async function fetchHtml(
-  url: string,
-  params?: Record<string, string>,
-): Promise<string> {
-  const fetchUrl = params ? `${url}?${new URLSearchParams(params)}` : url;
-
-  // Prepare options
-  const fetchOptions: any = {
-    method: "GET",
-    headers: {
-      ...BROWSER_HEADERS,
-      Referer: LK21Constants.BASE_URL,
-    },
-  };
-
-  const res = await fetchWithRetry(fetchUrl, fetchOptions);
-
-  if (!res.ok) throw new Error(`Fetch failed: ${res.status}`);
-  return res.text();
-}
-
-async function postForm(
-  url: string,
-  data: Record<string, string>,
-  extraHeaders: Record<string, string>,
-): Promise<any> {
-  const formData = new URLSearchParams();
-  for (const key in data) {
-    formData.append(key, data[key]);
+  constructor(tunnelUrl: string, config: Bindings) {
+    const jar = new CookieJar();
+    this.fetchFn = fetchCookie(globalThis.fetch, jar);
+    this.tunnelUrl = tunnelUrl;
+    this.config = config;
   }
 
-  const res = await fetchWithRetry(url, {
-    method: "POST",
-    headers: {
-      ...BROWSER_HEADERS,
-      ...extraHeaders,
-      "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
-      "Sec-Fetch-Dest": "empty",
-      "Sec-Fetch-Mode": "cors",
-      "Sec-Fetch-Site": "same-origin",
-    },
-    body: formData,
-  });
+  private async fetchWithRetry(
+    targetUrl: string,
+    options: any,
+    retries = 2,
+  ): Promise<Response> {
+    const proxyUrl = new URL(this.tunnelUrl);
+    proxyUrl.searchParams.append("target", targetUrl);
 
-  if (!res.ok) throw new Error(`Post failed: ${res.status}`);
-  return res.json();
-}
+    const timeoutSignal = AbortSignal.timeout(15000);
+    const finalOptions = {
+      ...options,
+      signal: timeoutSignal,
+    };
 
-// -----------------------------------------------------------------------------
-// CORE SERVICE LOGIC
-// -----------------------------------------------------------------------------
-
-async function getFilters(): Promise<FilterResponse> {
-  const html = await fetchHtml(LK21Constants.BASE_URL);
-  const $ = cheerio.load(html);
-
-  const extract = (
-    selector: string,
-    prefix: string = "",
-  ): { title: string; parameter: string }[] => {
-    const results: { title: string; parameter: string }[] = [];
-    $(selector)
-      .find("option")
-      .each((_, el) => {
-        const val = $(el).attr("value");
-        const txt = $(el).text().trim();
-        if (val && val !== "0" && txt) {
-          results.push({
-            title: txt,
-            parameter: prefix ? `${prefix}/${val}` : val.replace(/^\//, ""),
-          });
+    let lastError;
+    for (let i = 0; i <= retries; i++) {
+      try {
+        const res = await this.fetchFn(proxyUrl.toString(), finalOptions);
+        if (res.status >= 500) {
+          if (i < retries) {
+            await new Promise((r) => setTimeout(r, 1000));
+            continue;
+          }
         }
-      });
-    return results;
-  };
-
-  return {
-    genres: extract('select[name="genre1"]', "genre"),
-    countries: extract('select[name="country"]', "country"),
-    years: extract('select[name="tahun"]', "year"),
-    orders: extract("select.orderby"),
-  };
-}
-
-async function scrapeCatalog(
-  page: number = 1,
-  category: string = "top-movie-today",
-): Promise<MovieResult[]> {
-  const url =
-    page > 1
-      ? `${LK21Constants.BASE_URL}/${category}/page/${page}`
-      : `${LK21Constants.BASE_URL}/${category}`;
-
-  try {
-    const html = await fetchHtml(url);
-    const $ = cheerio.load(html);
-    const results: MovieResult[] = [];
-
-    $(".gallery-grid article").each((_, el) => {
-      const $el = $(el);
-      const titleEl = $el.find(".poster-title");
-      const linkEl = $el.find("a").first();
-
-      if (!titleEl.length || !linkEl.length) return;
-
-      const title = titleEl.text().trim();
-      const href = linkEl.attr("href") || "";
-      const slug = href.replace(/\/$/, "").split("/").pop() || "";
-      const poster = $el.find("img").attr("src") || null;
-      const rating = $el.find('[itemprop="ratingValue"]').text().trim() || null;
-      const quality = $el.find(".label").text().trim() || null;
-
-      results.push({
-        title,
-        slug,
-        poster,
-        rating,
-        quality,
-        url: href.startsWith("http")
-          ? href
-          : `${LK21Constants.BASE_URL}/${href}`,
-      });
-    });
-
-    return results;
-  } catch {
-    return [];
-  }
-}
-
-async function searchMovies(query: string): Promise<MovieResult[]> {
-  const url = `${LK21Constants.BASE_URL}/search`;
-  try {
-    const html = await fetchHtml(url, { s: query });
-    const $ = cheerio.load(html);
-    const results: MovieResult[] = [];
-
-    let items = $(".search-item article");
-    if (items.length === 0) {
-      items = $("article.post");
+        return res;
+      } catch (e) {
+        lastError = e;
+        if (i < retries) await new Promise((r) => setTimeout(r, 1000));
+      }
     }
+    throw (
+      lastError || new Error(`Failed to fetch via tunnel ${this.tunnelUrl}`)
+    );
+  }
 
-    items.each((_, el) => {
-      const $el = $(el);
-      const linkEl = $el.find("h2 a").first().length
-        ? $el.find("h2 a").first()
-        : $el.find(".entry-title a").first();
+  private async fetchHtml(
+    url: string,
+    params?: Record<string, string>,
+    customHeaders?: Record<string, string>,
+  ): Promise<string> {
+    const fetchUrl = params ? `${url}${new URLSearchParams(params)}` : url;
+    const res = await this.fetchWithRetry(fetchUrl, {
+      method: "GET",
+      headers: customHeaders, // Pass custom headers (like Referer)
+    });
+    if (!res.ok) throw new Error(`Fetch failed: ${res.status}`);
+    return res.text();
+  }
 
-      if (linkEl.length) {
-        const title = linkEl.text().trim();
-        const href = linkEl.attr("href") || "";
+  // --- Public Methods ---
+
+  public async getFilters(): Promise<FilterResponse> {
+    const html = await this.fetchHtml(this.config.BASE_URL);
+    const $ = cheerio.load(html);
+    const extract = (sel: string, pre: string = "") => {
+      const res: { title: string; parameter: string }[] = [];
+      $(sel)
+        .find("option")
+        .each((_, el) => {
+          const val = $(el).attr("value");
+          const txt = $(el).text().trim();
+          if (val && val !== "0" && txt) {
+            res.push({
+              title: txt,
+              parameter: pre ? `${pre}/${val}` : val.replace(/^\//, ""),
+            });
+          }
+        });
+      return res;
+    };
+    return {
+      genres: extract('select[name="genre1"]', "genre"),
+      countries: extract('select[name="country"]', "country"),
+      years: extract('select[name="tahun"]', "year"),
+      orders: extract("select.orderby"),
+    };
+  }
+
+  public async scrapeCatalog(
+    page: number = 1,
+    category: string = "top-movie-today",
+  ): Promise<MovieResult[]> {
+    const url =
+      page > 1
+        ? `${this.config.BASE_URL}/${category}/page/${page}`
+        : `${this.config.BASE_URL}/${category}`;
+    try {
+      const html = await this.fetchHtml(url);
+      const $ = cheerio.load(html);
+
+      const pageTitle = $("title").text().trim() || "No Title";
+      const bodySnippet = $("body")
+        .text()
+        .replace(/\s+/g, " ")
+        .substring(0, 200);
+
+      const results: MovieResult[] = [];
+      $(".gallery-grid article").each((_, el) => {
+        const $el = $(el);
+        const title = $el.find(".poster-title").text().trim();
+        const href = $el.find("a").first().attr("href") || "";
+        if (!title || !href) return;
         const slug = href.replace(/\/$/, "").split("/").pop() || "";
-        const poster = $el.find("img").attr("src") || null;
-
         results.push({
           title,
           slug,
-          poster,
-          rating: null,
-          quality: null,
-          url: href,
+          poster: $el.find("img").attr("src") || null,
+          rating: $el.find('[itemprop="ratingValue"]').text().trim() || null,
+          quality: $el.find(".label").text().trim() || null,
+          url: href.startsWith("http")
+            ? href
+            : `${this.config.BASE_URL}/${href}`,
         });
+      });
+
+      if (results.length === 0) {
+        return [
+          {
+            title: `DEBUG: ${pageTitle}`,
+            slug: "debug-error",
+            poster: "https://img.icons8.com/color/480/error--v1.png",
+            quality: "ERROR",
+            rating: "0",
+            url: `Content Snippet: ${bodySnippet}`,
+          },
+        ];
+      }
+
+      return results;
+    } catch (e: any) {
+      console.error(e);
+      return [
+        {
+          title: `DEBUG: Exception Occurred`,
+          slug: "debug-exception",
+          poster: "https://img.icons8.com/color/480/error--v1.png",
+          quality: "CRASH",
+          rating: "0",
+          url: `Error: ${e.message}`,
+        },
+      ];
+    }
+  }
+
+  public async searchMovies(query: string): Promise<MovieResult[]> {
+    const url = `${this.config.BASE_URL}/search`;
+    try {
+      const html = await this.fetchHtml(url, { s: query });
+      const $ = cheerio.load(html);
+      const results: MovieResult[] = [];
+      const items = $(".search-item article").length
+        ? $(".search-item article")
+        : $("article.post");
+      items.each((_, el) => {
+        const $el = $(el);
+        const link = $el.find("h2 a").first().length
+          ? $el.find("h2 a").first()
+          : $el.find(".entry-title a").first();
+        if (link.length) {
+          const href = link.attr("href") || "";
+          results.push({
+            title: link.text().trim(),
+            slug: href.replace(/\/$/, "").split("/").pop() || "",
+            poster: $el.find("img").attr("src") || null,
+            rating: null,
+            quality: null,
+            url: href,
+          });
+        }
+      });
+      return results;
+    } catch {
+      return [];
+    }
+  }
+
+  public async extractStream(slug: string): Promise<any> {
+    const pageUrl = `${this.config.BASE_URL}/${slug}`;
+    const html = await this.fetchHtml(pageUrl);
+    const $ = cheerio.load(html);
+    const title = $("title").text().split("|")[0].trim();
+
+    const poster = $(".g-item").first().find("img").attr("src") || null;
+
+    let iframeSrc: string | null = null;
+
+    // 1. Find Iframe Source
+    $("#player-list li a").each((_, el) => {
+      const href = $(el).attr("data-url") || $(el).attr("href");
+      if (href?.includes(this.config.PLAYER_IFRAME_HOST)) {
+        iframeSrc = href;
+        return false;
       }
     });
 
-    return results;
-  } catch {
-    return [];
-  }
-}
-
-async function extractStream(slug: string): Promise<WatchResponse> {
-  const pageUrl = `${LK21Constants.BASE_URL}/${slug}`;
-  const html = await fetchHtml(pageUrl);
-  const $ = cheerio.load(html);
-
-  const title = $("title").text().split("|")[0].trim();
-
-  let targetIframeUrl: string | null = null;
-
-  $("#player-list li a").each((_, el) => {
-    const href = $(el).attr("data-url") || $(el).attr("href");
-    if (
-      href &&
-      href.includes(LK21Constants.PLAYER_IFRAME_HOST) &&
-      href.includes("p2p")
-    ) {
-      targetIframeUrl = href;
-      return false;
+    if (!iframeSrc) {
+      const src = $("iframe#main-player").attr("src");
+      if (src?.includes(this.config.PLAYER_IFRAME_HOST)) iframeSrc = src;
     }
-  });
 
-  if (!targetIframeUrl) {
-    const src = $("iframe#main-player").attr("src");
-    if (src && src.includes(LK21Constants.PLAYER_IFRAME_HOST)) {
-      targetIframeUrl = src;
-    }
-  }
+    if (!iframeSrc) throw new Error("Server P2P not found");
 
-  if (!targetIframeUrl) {
-    throw new Error("Server P2P not found");
-  }
+    // 2. Extract ID using Regex
+    // Patterns: "/p2p/<ID>", "?id=<ID>"
+    // Fix: Explicitly stop at ? or & to avoid trailing '?'
+    let fileId: string | null = null;
+    const regexP2P = /\/p2p\/([^?&]+)/;
+    const regexId = /[?&]id=([^?&]+)/;
 
-  const hash = targetIframeUrl.split("/").pop();
-  if (!hash) throw new Error("Could not extract hash ID");
-
-  const apiUrl = `https://${LK21Constants.CLOUD_HOST}/api2.php?id=${hash}`;
-  const headers = {
-    Referer: `https://${LK21Constants.CLOUD_HOST}/video.php?id=${hash}`,
-    Origin: `https://${LK21Constants.CLOUD_HOST}`,
-    "X-Requested-With": "XMLHttpRequest",
-    "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
-  };
-  const body = {
-    r: `https://${LK21Constants.PLAYER_IFRAME_HOST}/`,
-    d: LK21Constants.CLOUD_HOST,
-  };
-
-  const data = await postForm(apiUrl, body, headers);
-
-  const streams: StreamItem[] = [];
-
-  const parse = (item: any) => {
-    if (item && item.file) {
-      streams.push({
-        label: item.label || "Auto",
-        type: "hls",
-        url: item.file,
-      });
-    }
-  };
-
-  if (Array.isArray(data)) {
-    data.forEach(parse);
-  } else if (data && typeof data === "object") {
-    if (Array.isArray(data.sources)) {
-      data.sources.forEach(parse);
+    const matchP2P = iframeSrc.match(regexP2P);
+    if (matchP2P && matchP2P[1]) {
+      fileId = matchP2P[1];
     } else {
-      parse(data);
+      const matchId = iframeSrc.match(regexId);
+      if (matchId && matchId[1]) {
+        fileId = matchId[1];
+      }
+    }
+
+    if (!fileId) throw new Error(`Could not extract ID from: ${iframeSrc}`);
+
+    // Force Clean Sanitization (Super Aggressive)
+    fileId = fileId.split("?")[0].split("&")[0];
+
+    // 3. Construct API URL
+    const apiUrl = `https://${this.config.CLOUD_HOST}/api2.php?id=${fileId}`;
+
+    // 4. Deep Fetch API
+    try {
+      const jsonString = await this.fetchHtml(
+        apiUrl,
+        {},
+        {
+          Referer: pageUrl,
+          Origin: `https://${this.config.CLOUD_HOST}`,
+          "X-Requested-With": "XMLHttpRequest",
+        },
+      );
+
+      try {
+        const data = JSON.parse(jsonString);
+        return {
+          title,
+          slug,
+          poster, // Include poster again
+          data, // Result from api2.php
+        };
+      } catch (e) {
+        throw new Error("Response is not valid JSON");
+      }
+    } catch (e: any) {
+      throw new Error(`Deep fetch failed: ${e.message}`);
     }
   }
-
-  if (streams.length === 0) {
-    throw new Error("Stream empty");
-  }
-
-  return {
-    title,
-    slug,
-    streams,
-  };
 }
 
 // -----------------------------------------------------------------------------
-// HONO APP & ROUTING
+// HONO APP & ROUTING (Cloudflare Workers)
 // -----------------------------------------------------------------------------
 
-const app = new Hono().basePath("/");
+const app = new Hono<{ Bindings: Bindings }>().basePath("/");
+
+// Middleware
+app.use("*", cors({ origin: (origin) => origin }));
+
+// Helper: Get Tunnel (Async KV)
+const getTunnel = async (c: any): Promise<string> => {
+  const tunnel = await c.env.LK21_STORE.get("CURRENT_TUNNEL");
+  if (!tunnel) {
+    throw new Error("Server sedang offline (Menunggu Laptop connect)");
+  }
+  return tunnel;
+};
+
+// --- ROUTES ---
+
+app.get("/", (c) => c.text("LK21 API is Running (KV Mode)."));
+
+// 1. REGISTER Endpoint (Called by Client Magic)
+app.post("/register", async (c) => {
+  const body = await c.req.json();
+  const { tunnelUrl, secret } = body;
+
+  if (secret !== c.env.ADMIN_SECRET) {
+    return c.json({ status: "Error", message: "Unauthorized Secret" }, 401);
+  }
+
+  await c.env.LK21_STORE.put("CURRENT_TUNNEL", tunnelUrl);
+
+  return c.json({
+    status: "Registered",
+    message: "Tunnel updated successfully",
+    tunnel: tunnelUrl,
+  });
+});
 
 app.get("/filters", async (c) => {
   try {
-    const data = await getFilters();
+    const tunnel = await getTunnel(c);
+    const engine = new LK21Engine(tunnel, c.env);
+    const data = await engine.getFilters();
     return c.json(data);
   } catch (e: any) {
     return c.json({ detail: e.message }, 500);
@@ -375,7 +383,9 @@ app.get("/movies", async (c) => {
   const category = c.req.query("category") || "top-movie-today";
   const page = parseInt(c.req.query("page") || "1");
   try {
-    const data = await scrapeCatalog(page, category);
+    const tunnel = await getTunnel(c);
+    const engine = new LK21Engine(tunnel, c.env);
+    const data = await engine.scrapeCatalog(page, category);
     return c.json(data);
   } catch (e: any) {
     return c.json({ detail: e.message }, 500);
@@ -386,7 +396,9 @@ app.get("/search", async (c) => {
   const q = c.req.query("q");
   if (!q) return c.json({ detail: "Query parameter 'q' is required" }, 400);
   try {
-    const data = await searchMovies(q);
+    const tunnel = await getTunnel(c);
+    const engine = new LK21Engine(tunnel, c.env);
+    const data = await engine.searchMovies(q);
     return c.json(data);
   } catch (e: any) {
     return c.json({ detail: e.message }, 500);
@@ -396,30 +408,13 @@ app.get("/search", async (c) => {
 app.get("/watch/:slug", async (c) => {
   const slug = c.req.param("slug");
   try {
-    const data = await extractStream(slug);
+    const tunnel = await getTunnel(c);
+    const engine = new LK21Engine(tunnel, c.env);
+    const data = await engine.extractStream(slug);
     return c.json(data);
   } catch (e: any) {
     return c.json({ detail: e.message }, 500);
   }
 });
 
-// Cache Middleware
-app.use("*", async (c, next) => {
-  await next();
-  const path = c.req.path;
-  if (path.startsWith("/watch")) {
-    c.header("Cache-Control", "private, no-cache, no-store, must-revalidate");
-  } else {
-    c.header(
-      "Cache-Control",
-      "public, s-maxage=480, stale-while-revalidate=60",
-    );
-  }
-});
-
-// Vercel Export
-export const config = {
-  runtime: "nodejs",
-};
-
-export default handle(app);
+export default app;
