@@ -12,11 +12,13 @@
         "moduleResolution": "Bundler",
         "outDir": "dist",
         "types": [
-            "@cloudflare/workers-types"
+            "@cloudflare/workers-types",
+            "bun"
         ]
     },
     "include": [
         "src/**/*",
-        "api/**/*"
+        "api/**/*",
+        "client/**/*"
     ]
 }

@@ -89,9 +89,39 @@ export class LK21Adapter implements IAdapter {
     const html = await this.engine.fetchHtml(pageUrl, {}, headers);
     const $ = cheerio.load(html);
 
-    const title = $("title").text().split("|")[0].trim();
-    const poster = $(".g-item").first().find("img").attr("src") || null;
-    const synopsis = $(".entry-content p").first().text().trim() || null;
+    let title = $("h1.entry-title").text().trim();
+    if (!title) {
+      title = $("title").text().split("|")[0].trim();
+      // Fallback clean
+      title = title
+        .replace(/^Lk21 Nonton\s+/i, "")
+        .replace(/\s+Sub Indo$/i, "")
+        .trim();
+    }
+
+    // Improved selectors
+    const poster =
+      $('meta[property="og:image"]').attr("content") ||
+      $(".g-item").find("img").attr("src") ||
+      $(".poster").find("img").attr("src") ||
+      $("img.wp-post-image").attr("src") ||
+      null;
+
+    let synopsis =
+      $("div.synopsis.long.collapsed").text().trim() ||
+      $("div.synopsis").text().trim() ||
+      $('meta[property="og:description"]').attr("content") ||
+      $(".entry-content p").first().text().trim() ||
+      $("#synopsis").text().trim() ||
+      null;
+
+    // Clean up synopsis
+    if (synopsis && synopsis.includes("Nonton Film"))
+      synopsis = synopsis.split("film ini")[1] || synopsis;
+
+    if (synopsis) {
+      synopsis = synopsis.replace("Sinopsis", "").trim();
+    }
 
     // 2. Find Iframe (P2P)
     let iframeSrc: string | null = null;
@@ -111,8 +141,9 @@ export class LK21Adapter implements IAdapter {
 
     // 3. Extract ID
     let fileId: string | null = null;
-    const regexP2P = /\/p2p\/([^?&]+)/;
-    const regexId = /[?&]id=([^?&]+)/;
+    // Regex updated to be more robust (alphanumeric + dashes + underscores + equals)
+    const regexP2P = /\/p2p\/([a-zA-Z0-9\-_=]+)/;
+    const regexId = /[?&]id=([a-zA-Z0-9\-_=]+)/;
 
     const matchP2P = iframeSrc.match(regexP2P);
     if (matchP2P) fileId = matchP2P[1];
@@ -156,7 +187,6 @@ export class LK21Adapter implements IAdapter {
           label: "Auto",
           type: "hls",
           url: streamUrl,
-          headers: { Referer: `https://${CLOUD_HOST}/` },
         },
       ],
     };

@@ -1,0 +1,6 @@
+{
+  "provider": "cloudflare",
+  "customPort": 8000,
+  "workerUrl": "https://lk21-api.leksaandanaoktaviansaa.workers.dev",
+  "adminSecret": "rahasia123"
+}

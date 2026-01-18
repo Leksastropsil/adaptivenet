@@ -4,8 +4,12 @@
   "type": "module",
   "private": true,
   "scripts": {
-    "dev": "wrangler dev api/index.ts",
-    "deploy": "wrangler deploy --minify api/index.ts"
+    "dev": "bun run src/server.ts",
+    "client": "bun run src/cli/main.ts",
+    "build": "bun build --compile --target=bun-windows-x64-modern src/cli/main.ts --outfile adaptive-net-client",
+    "start": "node dist/server.js",
+    "deploy:cf": "wrangler deploy --minify src/index.ts",
+    "cf:dev": "wrangler dev src/index.ts"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20240401.0",
@@ -16,12 +20,14 @@
     "typescript": "^5"
   },
   "dependencies": {
+    "@hono/node-server": "^1.19.9",
     "@hono/zod-openapi": "^1.2.0",
     "@types/figlet": "^1.7.0",
     "@types/gradient-string": "^1.1.6",
     "@types/inquirer": "^9.0.9",
     "chalk": "^5.6.2",
     "cheerio": "^1.1.2",
+    "dotenv": "^17.2.3",
     "fetch-cookie": "^3.2.0",
     "figlet": "^1.9.4",
     "gradient-string": "^3.0.0",

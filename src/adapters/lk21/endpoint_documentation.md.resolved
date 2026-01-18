@@ -1,0 +1,42 @@
+# LK21 API Endpoints
+
+Here is the complete list of available endpoints for the **LK21 Provider**.
+
+## 1. System Endpoints
+
+| Method | Endpoint | Description |
+| :--- | :--- | :--- |
+| `GET` | `/` | Root message (Health Check). |
+| `POST` | `/register` | Register a new Cloudflared Tunnel URL. |
+| `GET` | `/proxy` | Universal P2P/HLS Proxy with Header Injection. |
+
+## 2. Default Routes (Backward Compatibility)
+*These routes automatically default to the `lk21` provider.*
+
+| Method | Endpoint | Description |
+| :--- | :--- | :--- |
+| `GET` | `/movies?page=N` | Get latest movies (Page default: 1). |
+| `GET` | `/search?q=query` | Search for movies. |
+| `GET` | `/watch/:slug` | Get stream details & auto-proxied links for a movie slug. |
+
+## 3. Dynamic Provider Routes (Explicit)
+*You can access LK21 explicitly using these routes.*
+
+| Method | Endpoint | Description |
+| :--- | :--- | :--- |
+| `GET` | `/lk21/movies?page=N` | Get latest movies for LK21. |
+| `GET` | `/lk21/search?q=query` | Search movies on LK21. |
+| `GET` | `/lk21/watch/:slug` | Get stream details for LK21. |
+
+---
+
+### Example Usage
+
+**Latest Movies (Page 1):**
+`https://<worker-url>/movies`
+
+**Search "Avatar":**
+`https://<worker-url>/search?q=avatar`
+
+**Watch "Avatar 2025":**
+`https://<worker-url>/watch/avatar-fire-ash-2025`
