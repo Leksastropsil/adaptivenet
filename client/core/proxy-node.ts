@@ -52,16 +52,33 @@ export class ProxyNode {
   private async killPort(port: number) {
     console.log(`[Proxy] Checking port ${port}...`);
     if (process.platform === "win32") {
+      // 1. Try PowerShell (Graceful)
       try {
-        // PowerShell command to find and kill the process listening on the port
         await execAsync(
           `powershell -Command "Stop-Process -Id (Get-NetTCPConnection -LocalPort ${port}).OwningProcess -Force"`,
         );
-        console.log(`[Proxy] Killed process on port ${port}.`);
-      } catch (e: any) {
-        // Ignore errors (process not found, etc.)
-        // console.log("Kill port error:", e.message);
-      }
+        console.log(`[Proxy] Killed process on port ${port} (PowerShell).`);
+        return;
+      } catch (e) {}
+
+      // 2. Try TaskKill (Forceful)
+      try {
+        // Find PID
+        const { stdout } = await execAsync(`netstat -ano | findstr :${port}`);
+        if (stdout) {
+          const lines = stdout.trim().split("\n");
+          for (const line of lines) {
+            const parts = line.trim().split(/\s+/);
+            const pid = parts[parts.length - 1];
+            if (pid && pid !== "0") {
+              await execAsync(`taskkill /PID ${pid} /F`);
+              console.log(
+                `[Proxy] Killed PID ${pid} on port ${port} (TaskKill).`,
+              );
+            }
+          }
+        }
+      } catch (e) {}
     } else {
       try {
         await execAsync(`lsof -t -i:${port} | xargs kill -9`);

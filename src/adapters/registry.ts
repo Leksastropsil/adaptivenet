@@ -1,10 +1,14 @@
 import { CoreEngine } from "../core/engine";
 import { IAdapter } from "../core/types";
 import { LK21Adapter } from "./lk21";
+import { YoutubeMusicAdapter } from "./ytmusic";
+import { MusixmatchAdapter } from "./musixmatch";
 
 // Registry Map
 const adapters: Record<string, any> = {
   lk21: LK21Adapter,
+  ytmusic: YoutubeMusicAdapter,
+  musixmatch: MusixmatchAdapter,
   // idlix: IdlixAdapter
 };
 

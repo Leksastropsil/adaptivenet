@@ -1,49 +1,54 @@
 import { select, input } from "@inquirer/prompts";
 import chalk from "chalk";
+import ora from "ora";
 import figlet from "figlet";
+import gradient from "gradient-string";
 // @ts-ignore
 import standardFont from "./fonts/Standard.flf" with { type: "text" };
-import ora from "ora";
-import gradient from "gradient-string";
 import { spawnSync } from "node:child_process";
 import { ConfigManager, ClientConfig } from "./ConfigManager";
 import { ClientEngine } from "./ClientEngine";
 import { DeployManager } from "./DeployManager";
 
-// Preload Font for EXE Bundle support
-figlet.parseFont("Standard", standardFont);
-
-// WINDOWS FIX: Force UTF-8 Output for Emojis
+// WINDOWS FIX: Force UTF-8 Output
 if (process.platform === "win32") {
   try {
     spawnSync("chcp", ["65001"], { stdio: "inherit", shell: true });
-  } catch (e) {
-    // Ignore if fails
-  }
+  } catch (e) {}
 }
 
+// Preload Font
+figlet.parseFont("Standard", standardFont);
+
 const engine = new ClientEngine();
+
+// --- GLOBAL CLEANUP ---
+const globalCleanup = async () => {
+  console.log("\n[INFO] Received Exit Signal. Cleaning up...");
+  await engine.stop();
+  process.exit(0);
+};
+
+process.on("SIGINT", globalCleanup);
+process.on("SIGTERM", globalCleanup);
 
 // --- UI HELPERS ---
 
 const clear = () => console.clear();
 
-const renderTitle = () => {
+const renderHeader = () => {
   const text = figlet.textSync("ADAPTIVENET", {
     font: "Standard",
     horizontalLayout: "fitted",
   });
   console.log(gradient.pastel.multiline(text));
-  console.log(
-    gradient.cristal(
-      "  Universal Stream Gateway Client v2.1 | Enterprise Edition",
-    ),
-  );
-  console.log(chalk.dim("  " + "=".repeat(60)));
+  console.log(chalk.bold("  AdaptiveNet Web v0.4.0"));
+  console.log(chalk.dim("  Maintained by AdaptiveTeam"));
+  console.log(chalk.dim("-".repeat(60)));
   console.log("");
 };
 
-// TUI Helper: Render Input Panel (Minimal Style)
+// Minimal Input Helper
 const renderInputBox = async (
   label: string,
   desc: string,
@@ -51,41 +56,41 @@ const renderInputBox = async (
   isSecret = false,
   validate?: (val: string) => boolean | string,
 ) => {
-  const width = 60;
-  // Header: Neon Blue Line
-  console.log(
-    " " +
-      chalk.bold.white(label) +
-      chalk.hex("#3b8eea")(" " + "─".repeat(width - label.length)),
-  );
-  // Description
-  console.log(" " + chalk.dim(desc));
+  console.log(chalk.bold(label));
+  console.log(chalk.dim(desc));
 
   const value = await input({
-    message: chalk.hex("#00ff99")(" └─>"),
+    message: " >",
     default: defaultValue,
     validate,
-    theme: {
-      prefix: "",
-    },
   });
 
-  console.log(""); // Spacer
+  console.log("");
   return value;
 };
 
 const showMonitor = async () => {
   clear();
-  renderTitle();
+  renderHeader();
 
-  // 1. Select Adapter FIRST
+  // 1. Select Adapter
   const adapter = await select({
-    message: chalk.hex("#3b8eea")("Select Content Adapter"),
+    message: "Select Content Adapter:",
     choices: [
       {
-        name: "🎬 LK21 (LayarKaca21)",
+        name: "LK21 (LayarKaca21)" + chalk.green(" [STABLE]"),
         value: "lk21",
         description: "Indonesian Movie Streaming Platform",
+      },
+      {
+        name: "Youtube Music" + chalk.red(" [UNSTABLE]"),
+        value: "ytmusic",
+        description: "music.youtube.com (Charts & Search)",
+      },
+      {
+        name: "Musixmatch" + chalk.red(" [UNSTABLE]"),
+        value: "musixmatch",
+        description: "Lyrics & Metadata",
       },
     ],
   });
@@ -96,31 +101,24 @@ const showMonitor = async () => {
   try {
     await engine.start(config, adapter);
   } catch (e) {
-    console.log(chalk.red("Failed to start engine."));
+    console.log(chalk.red("[ERROR] Failed to start engine."));
     await new Promise((r) => setTimeout(r, 2000));
     return;
   }
 
-  // 3. System Online Dashboard (Cleaner Look)
+  // 3. System Status
   console.log(
-    chalk.bold.hex("#00ff99")(" ● SYSTEM ONLINE ") +
-      " " +
-      chalk.dim("Waiting for traffic..."),
+    chalk.green("[READY]") +
+      "  System Online" +
+      chalk.dim(" | Waiting for traffic..."),
   );
-  console.log(
-    chalk.dim("Press ") +
-      chalk.bold.hex("#3b8eea")("CTRL+C") +
-      chalk.dim(" to Shutdown") +
-      "  |  " +
-      chalk.dim("Press ") +
-      chalk.bold.hex("#3b8eea")("CTRL+X") +
-      chalk.dim(" for Dashboard"),
-  );
-  console.log(chalk.dim("-".repeat(60)));
+  console.log(chalk.dim("-".repeat(40)));
+  console.log(chalk.dim("Controls:"));
+  console.log("  Ctrl+C  Shutdown");
+  console.log("  Ctrl+X  Dashboard");
+  console.log("");
 
-  // Keep alive loop until SIGINT/CTRL+X
-
-  // Keep alive loop until SIGINT/CTRL+X
+  // Keep alive loop
   return new Promise<void>((resolve) => {
     const cleanup = async () => {
       await engine.stop();
@@ -129,7 +127,6 @@ const showMonitor = async () => {
       process.stdin.removeAllListeners("keypress");
     };
 
-    // Setup Keypress
     const readline = require("readline");
     readline.emitKeypressEvents(process.stdin);
     if (process.stdin.isTTY) process.stdin.setRawMode(true);
@@ -137,16 +134,14 @@ const showMonitor = async () => {
 
     process.stdin.on("keypress", async (str, key) => {
       if (key.ctrl && key.name === "c") {
-        // CTRL + C -> Shutdown Completely
-        console.log("\n" + chalk.red("🔻 Shutting Down (Force)..."));
-        await cleanup();
+        console.log("\n" + chalk.red("[STOP] Shutting Down..."));
+        await engine.stop();
         process.exit(0);
       }
       if (key.ctrl && key.name === "x") {
-        // CTRL + X -> Back to Dashboard
-        console.log("\n" + chalk.yellow("🔻 Stopping Engine..."));
+        console.log("\n" + chalk.yellow("[STOP] Stopping Engine..."));
         await cleanup();
-        resolve(); // Returns to main loop
+        resolve();
       }
     });
   });
@@ -154,57 +149,47 @@ const showMonitor = async () => {
 
 const configure = async () => {
   clear();
-  renderTitle();
-  console.log(chalk.bgBlue.black.bold(" CONFIGURATION MODE ") + "\n");
+  renderHeader();
+  console.log(chalk.bold("[CONFIGURATION DETAILS]") + "\n");
 
   const config = ConfigManager.load();
 
   // 1. Worker URL
   const newWorkerUrl = await renderInputBox(
-    "📡 Service URL",
-    "Your deployed Worker/Vercel link",
+    "Service URL",
+    "Endpoint for the worker/server",
     config.workerUrl,
     false,
-    (value) =>
-      value.startsWith("http")
-        ? true
-        : "URL must start with http:// or https://",
+    (value) => (value.startsWith("http") ? true : "Must start with http(s)://"),
   );
 
   // 2. Admin Secret
   const newAdminSecret = await renderInputBox(
-    "🔑 Access Key",
-    "Secret used for secure handshake",
+    "Access Key",
+    "Secret for handshake authentication",
     config.adminSecret,
   );
 
   // 3. Port
   const newPortStr = await renderInputBox(
-    "🔌 Local Port",
-    "Port for this machine's proxy",
+    "Local Port",
+    "Port for the local proxy server",
     config.customPort.toString(),
     false,
-    (value) => (!isNaN(parseInt(value)) ? true : "Port must be a number"),
+    (value) => (!isNaN(parseInt(value)) ? true : "Must be a number"),
   );
 
-  // 4. Provider (Manual Box for Select)
-  const width = 60;
-  const label = "🚇 Tunneling";
-  console.log(
-    " " +
-      chalk.bold.white(label) +
-      chalk.hex("#3b8eea")(" " + "─".repeat(width - label.length)),
-  );
-  console.log(" " + chalk.dim("How to expose this connection"));
+  // 4. Provider
+  console.log(chalk.bold("Tunnel Provider"));
+  console.log(chalk.dim("Mechanism for exposing the connection"));
 
   const newProvider = (await select({
-    message: chalk.hex("#00ff99")(" └─>"),
+    message: " >",
     choices: [
-      { name: "Cloudflare (Stable)", value: "cloudflare" },
+      { name: "Cloudflare (Recommended)", value: "cloudflare" },
       { name: "Pinggy (Backup)", value: "pinggy" },
     ],
     default: config.provider,
-    theme: { prefix: "" },
   })) as "cloudflare" | "pinggy";
 
   console.log("");
@@ -217,88 +202,68 @@ const configure = async () => {
   };
 
   ConfigManager.save(newConfig);
-  console.log(chalk.green("\n✔ Configuration Saved Successfully!"));
+  console.log(chalk.green("[OK] Configuration saved."));
   await new Promise((r) => setTimeout(r, 1000));
 };
 
 const startCLI = async () => {
   clear();
-  renderTitle();
+  renderHeader();
 
   let config = ConfigManager.load();
   const isDefault =
     config.workerUrl === "http://localhost:8787" || !config.workerUrl;
 
   if (isDefault) {
-    console.log(chalk.yellow("⚡ First Setup Detected"));
-    console.log(
-      chalk.dim(
-        "   We need to deploy your backend and configure the client.\n",
-      ),
-    );
-
-    // 1. Force Deployment
+    console.log(chalk.yellow("[WARN] First time setup detected."));
+    console.log("Proceeding to deployment and configuration...\n");
     await DeployManager.deployAndSync();
-
-    // 2. Force Configuration (Re-load to get the synced URL)
-    console.log(chalk.blue("\n⚙️  Proceeding to Configuration..."));
+    console.log("\n[INFO] Starting configuration...");
     await new Promise((r) => setTimeout(r, 1500));
     await configure();
-
-    console.log(chalk.green("\n✅ Setup Complete! Entering Dashboard..."));
+    console.log(chalk.green("\n[OK] Setup complete."));
     await new Promise((r) => setTimeout(r, 1500));
   }
 
   // Main Loop
   while (true) {
     clear();
-    renderTitle();
+    renderHeader();
 
-    // Status Dashboard
-    config = ConfigManager.load(); // Refresh config
+    config = ConfigManager.load();
     const errors = ConfigManager.validate(config);
 
     if (errors.length > 0) {
-      console.log(
-        chalk.bold.hex("#ff5555")(" ● CONFIG REQUIRED ") +
-          " " +
-          chalk.red("Missing parameters"),
-      );
+      console.log(chalk.red("[ERROR] Configuration missing parameters."));
     } else {
       console.log(
-        chalk.bold.hex("#00ff99")(" ● READY ") +
-          chalk.hex("#3b8eea")(`  Target: ${config.workerUrl}`),
+        chalk.green("[STATUS] READY") +
+          chalk.dim(`  Target: ${config.workerUrl}`),
       );
     }
     console.log("");
 
     const action = await select({
-      message: chalk.hex("#3b8eea").bold("MAIN MENU"),
+      message: "Main Menu",
       choices: [
         {
-          name:
-            chalk.hex("#00ff99")("📡") +
-            chalk.bold.white(" Start Gateway") +
-            chalk.dim("       Launch Proxy & Tunnel"),
+          name: "Start Gateway",
           value: "start",
           disabled: errors.length > 0,
+          description: "Launch proxy and tunnel",
         },
         {
-          name:
-            chalk.hex("#00ff99")("🚀") +
-            chalk.bold.white(" Redeploy") +
-            chalk.dim("            Auto-Detect / Cloud / VPS"),
+          name: "Redeploy Infrastructure",
           value: "deploy",
+          description: "Update backend deployment",
         },
         {
-          name:
-            chalk.hex("#00ff99")("⚙️ ") +
-            chalk.bold.white(" Configuration") +
-            chalk.dim("      Server & Tunnel Settings"),
+          name: "Configuration",
           value: "config",
+          description: "Edit settings",
         },
         {
-          name: chalk.gray("🚪 Exit"),
+          name: "Exit",
           value: "exit",
         },
       ],
@@ -316,6 +281,30 @@ const startCLI = async () => {
     }
   }
 };
+
+// --- ARGUMENT HANDLING ---
+const args = process.argv.slice(2);
+
+if (args.includes("--version") || args.includes("-v")) {
+  console.log("v0.4.0");
+  console.log("Maintained by AdaptiveTeam");
+  process.exit(0);
+}
+
+if (args.includes("--help") || args.includes("-h")) {
+  console.log(
+    `
+Usage: adaptive-net-client [options]
+
+Options:
+  -v, --version   Show version number
+  -h, --help      Show help
+
+Maintained by AdaptiveTeam
+`.trim(),
+  );
+  process.exit(0);
+}
 
 // Start
 startCLI();

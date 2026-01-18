@@ -1,5 +1,7 @@
 import { ProxyNode } from "../../client/core/proxy-node";
 import { LK21ClientProvider } from "../../client/providers/lk21";
+import { YoutubeMusicClientProvider } from "../../client/providers/ytmusic";
+import { MusixmatchClientProvider } from "../../client/providers/musixmatch";
 import { ClientConfig } from "./ConfigManager";
 
 // Wrapper to control the ProxyNode
@@ -20,6 +22,14 @@ export class ClientEngine {
       default:
         console.log("Initializing Adapter: LayarKaca21 (LK21)...");
         contentProvider = new LK21ClientProvider();
+        break;
+      case "ytmusic":
+        console.log("Initializing Adapter: Youtube Music...");
+        contentProvider = new YoutubeMusicClientProvider();
+        break;
+      case "musixmatch":
+        console.log("Initializing Adapter: Musixmatch...");
+        contentProvider = new MusixmatchClientProvider();
         break;
     }
 
@@ -48,7 +58,7 @@ export class ClientEngine {
   }
 
   public async stop() {
-    if (!this.isRunning || !this.proxy) return;
+    if (!this.proxy) return;
 
     // console.log("Stopping Engine...");
     await this.proxy.stop();
