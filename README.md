@@ -4,17 +4,16 @@
 
 - 🇮🇩 [Bahasa Indonesia](./docs/id/README.md)
 - 🇺🇸 [English](./docs/en/README.md)
-- 🇨🇳 [简体中文](./docs/zh/README.md)
 
 _(Proyek Riset & Edukasi)_
 
-Framework **berbasis Edge Computing** dengan arsitektur **Core → Adapters** untuk mempelajari **perilaku sistem web modern**, orkestrasi edge, serta pola interoperabilitas dan proteksi platform (rate limit, antibot, dsb) dalam konteks **edukasi dan riset teknis**.
+Framework **berbasis Edge Computing** dengan arsitektur **Core → Adapters** untuk mempelajari **perilaku sistem web modern**, orkestrasi edge, serta interoperabilitas dan proteksi platform (rate limit, antibot, dsb) dalam konteks **edukasi dan riset teknis**.
 
 Proyek ini berfokus pada **arsitektur sistem dan rekayasa perangkat lunak**, bukan pada situs atau konten tertentu.
 
 ---
 
-## 🧠 Gambaran Umum
+## Gambaran Umum
 
 Platform web modern menggunakan berbagai mekanisme proteksi seperti:
 
@@ -30,9 +29,9 @@ Framework ini dibuat untuk **mempelajari dan mensimulasikan** pola-pola tersebut
 
 Pendekatan ini memungkinkan eksplorasi teknis tanpa mengikat sistem inti ke satu target tertentu.
 
----
 
-## 🧩 Arsitektur Sistem
+
+## Arsitektur Sistem
 
 Diagram berikut menunjukkan pemisahan yang jelas antara **Core** dan **Adapters**.
 
@@ -76,7 +75,7 @@ flowchart TB
 
 ---
 
-## 🔬 Contoh Alur Adapter (Studi Kasus Teknis)
+## Contoh Alur Adapter (Studi Kasus Teknis)
 
 Diagram ini menunjukkan alur eksekusi salah satu adapter dalam framework.
 
@@ -127,9 +126,9 @@ graph TD
 
 > Alur ini tidak wajib digunakan dan dapat dihapus tanpa memengaruhi Core.
 
----
 
-## 🎯 Tujuan & Ruang Lingkup
+
+## Tujuan & Ruang Lingkup
 
 **Proyek ini ditujukan untuk:**
 
@@ -146,42 +145,20 @@ graph TD
 - Melewati paywall untuk keuntungan finansial
 - Penyediaan akses ke media ilegal
 
----
 
-## ⚠️ Disclaimer Hukum & Etika
 
-> **Proyek ini dibuat semata-mata untuk tujuan edukasi, riset, dan eksperimen teknis.**
+## Disclaimer 
+
+> **Proyek ini dibuat semata-mata untuk tujuan edukasi, riset, dan eksperimen.**
 
 1.  **Sistem Core** bersifat netral, tidak terikat pada situs atau konten tertentu.
 2.  **Implementasi Adapter**:
     - Opsional
     - Sebagai contoh teknis
     - Tidak dimaksudkan untuk penyalahgunaan di dunia nyata
+      
 
-**Pengguna bertanggung jawab penuh atas:**
-
-- Cara penggunaan
-- Target yang diakses
-- Kepatuhan terhadap hukum dan regulasi lokal
-
-> Mengakses, mengambil, atau mendistribusikan konten berhak cipta tanpa izin dapat melanggar hukum di wilayah tertentu.
-
-**Penulis proyek:**
-
-- Tidak meng-host konten apa pun
-- Tidak menyediakan media berhak cipta
-- Tidak mendorong penggunaan ilegal
-- Tidak bertanggung jawab atas penyalahgunaan oleh pihak ketiga
-
-**Pastikan Anda:**
-
-- Memiliki hak legal atas target yang diuji
-- Mematuhi hukum, regulasi, dan kebijakan platform
-- Menghormati hak kekayaan intelektual
-
----
-
-## 🧪 Catatan Riset
+## Catatan 
 
 Penyebutan situs, platform, atau layanan dunia nyata:
 
@@ -193,15 +170,7 @@ Penyebutan situs, platform, atau layanan dunia nyata:
 
 ---
 
-## 📜 Lisensi
+## Lisensi
 
 Proyek ini dirilis sebagai **open-source** untuk pembelajaran dan riset.
 
-- Gunakan secara bertanggung jawab.
-- Pahami konsekuensi teknis dan hukum dari setiap deployment.
-
----
-
-## 🧠 Catatan Akhir
-
-> Rekayasa perangkat lunak yang baik bukan hanya soal _apa_ yang bisa dibuat, tetapi juga _mengapa_ dibuat, _bagaimana_ digunakan, dan dampaknya.
